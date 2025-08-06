@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"os"
 	"os/signal"
@@ -16,6 +17,14 @@ import (
 	"github.com/disgoorg/disgo/gateway"
 	"github.com/disgoorg/snowflake/v2"
 )
+
+type Brain struct {
+	memory []string
+}
+
+func (b *Brain) observe(obs string) {
+	b.memory = append(b.memory, obs)
+}
 
 var (
 	token   = os.Getenv("DISCORD_TOKEN")
@@ -34,7 +43,17 @@ var (
 			},
 		},
 	}
+
+	guilds = make(map[snowflake.ID]*Brain)
 )
+
+func retrieve_guild_brain(id snowflake.ID) *Brain {
+	if guilds[id] == nil {
+		guilds[id] = new(Brain)
+	}
+
+	return guilds[id]
+}
 
 func main() {
 	err := godotenv.Load()
@@ -82,9 +101,13 @@ func onMessageCreate(event *events.MessageCreate) {
 	if event.Message.Author.Bot {
 		return
 	}
+
+	var schizo = retrieve_guild_brain(*event.GuildID)
+	schizo.observe(event.Message.Content)
+
 	var message string
 	if event.Message.Content == "?schizoid" {
-		message = "schizoid has arisen from their slumber"
+		message = fmt.Sprintf("%s", schizo)
 	}
 
 	if message != "" {
