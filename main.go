@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/joho/godotenv"
 
@@ -18,12 +19,41 @@ import (
 	"github.com/disgoorg/snowflake/v2"
 )
 
-type Brain struct {
-	memory []string
+type Observation struct {
+	content string
+	author  string
+	time    time.Time
 }
 
-func (b *Brain) observe(obs string) {
-	b.memory = append(b.memory, obs)
+func (o *Observation) String() {
+	if o == nil {
+		return
+	}
+	fmt.Printf("Observation: %s\nAuthor: %s\nTime: %s\n", o.content, o.author, o.time.Format(time.RFC3339))
+}
+
+func make_observation(msg discord.Message) Observation {
+	return Observation{msg.Content, msg.Author.Username, msg.CreatedAt}
+}
+
+type Brain struct {
+	memory []Observation
+}
+
+func (b *Brain) observe(obs discord.Message) {
+	b.memory = append(b.memory, make_observation(obs))
+}
+
+func (b *Brain) String() string {
+	if b == nil {
+		return "No observations yet."
+	}
+
+	var result string
+	for _, obs := range b.memory {
+		result += fmt.Sprintf("Observation: %s\nAuthor: %s\nTime: %s\n", obs.content, obs.author, obs.time.Format(time.RFC3339))
+	}
+	return result
 }
 
 var (
@@ -103,11 +133,11 @@ func onMessageCreate(event *events.MessageCreate) {
 	}
 
 	var schizo = retrieve_guild_brain(*event.GuildID)
-	schizo.observe(event.Message.Content)
+	schizo.observe(event.Message)
 
 	var message string
 	if event.Message.Content == "?schizoid" {
-		message = fmt.Sprintf("%s", schizo)
+		message = fmt.Sprint(schizo)
 	}
 
 	if message != "" {
