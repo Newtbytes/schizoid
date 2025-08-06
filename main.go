@@ -7,6 +7,7 @@ import (
 	"math/rand/v2"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -82,7 +83,13 @@ func bigrams(text []uint8) [][]uint8 {
 }
 
 func (m *NgramModel) train(sample string) {
-	for _, bigram := range bigrams(m.tokenizer.Encode(sample)) {
+	if len(sample) == 0 {
+		return
+	}
+
+	// add end of text token
+	tokens := append(m.tokenizer.Encode(sample), 0)
+	for _, bigram := range bigrams(tokens) {
 		m.counts[bigram[0]][bigram[1]]++
 	}
 }
@@ -135,21 +142,19 @@ func (m *NgramModel) generate(seed string, length int) string {
 		return ""
 	}
 
-	var result string
-	current := seed
+	var out = seed
 
 	for i := 0; i < length; i++ {
-		sampled := sample(m.probs(current))
+		sampled := sample(m.probs(out))
 		if sampled == 0 {
 			break
 		}
 
 		var next = m.tokenizer.Decode([]uint8{uint8(sampled)})
-		result += next
-		current = current[1:] + string(next)
+		out += next
 	}
 
-	return result
+	return out
 }
 
 type Observation struct {
@@ -258,8 +263,9 @@ func onMessageCreate(event *events.MessageCreate) {
 	schizo.observe(event.Message)
 
 	var message string
-	if event.Message.Content == "?schizoid" {
-		message = schizo.model.generate(event.Message.Content, 100)
+	if strings.HasPrefix(event.Message.Content, "?schizoid") {
+		var seed = event.Message.Content[len("?schizoid "):]
+		message = schizo.model.generate(seed, 100)
 	}
 
 	if message != "" {
