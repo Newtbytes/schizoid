@@ -14,15 +14,38 @@ import (
 	"github.com/disgoorg/disgo/discord"
 	"github.com/disgoorg/disgo/events"
 	"github.com/disgoorg/disgo/gateway"
+	"github.com/disgoorg/snowflake/v2"
+)
+
+var (
+	token   = os.Getenv("DISCORD_TOKEN")
+	guildID = snowflake.GetEnv("GUILD_ID")
+
+	commands = []discord.ApplicationCommandCreate{
+		discord.SlashCommandCreate{
+			Name:        "echo",
+			Description: "repeats what you say back to you",
+			Options: []discord.ApplicationCommandOption{
+				discord.ApplicationCommandOptionString{
+					Name:        "message",
+					Description: "What to say",
+					Required:    true,
+				},
+			},
+		},
+	}
 )
 
 func main() {
 	err := godotenv.Load()
 	if err != nil {
-		log.Fatal(err)
+		log.Fatalf("Failed to load environment: %s", err)
 	}
 
-	client, err := disgo.New(os.Getenv("DISCORD_TOKEN"),
+	token = os.Getenv("DISCORD_TOKEN")
+	guildID = snowflake.GetEnv("GUILD_ID")
+
+	client, err := disgo.New(token,
 		bot.WithGatewayConfigOpts(
 			gateway.WithIntents(
 				gateway.IntentGuildMessages,
@@ -30,16 +53,22 @@ func main() {
 			),
 		),
 		bot.WithEventListenerFunc(onMessageCreate),
+		bot.WithEventListenerFunc(commandListener),
 	)
 
 	if err != nil {
-		log.Fatal(err)
+		log.Fatalf("Failed to create client: %s", err)
 	}
 
 	defer client.Close(context.TODO())
 
+	if _, err = client.Rest().SetGuildCommands(client.ApplicationID(), guildID, commands); err != nil {
+		log.Fatalf("Failed to setup commands: %s", err)
+		return
+	}
+
 	if err = client.OpenGateway(context.TODO()); err != nil {
-		log.Fatal(err)
+		log.Fatalf("Failed to open gateway: %s", err)
 		return
 	}
 
@@ -60,5 +89,18 @@ func onMessageCreate(event *events.MessageCreate) {
 
 	if message != "" {
 		_, _ = event.Client().Rest().CreateMessage(event.ChannelID, discord.NewMessageCreateBuilder().SetContent(message).Build())
+	}
+}
+
+func commandListener(event *events.ApplicationCommandInteractionCreate) {
+	data := event.SlashCommandInteractionData()
+	if data.CommandName() == "echo" {
+		err := event.CreateMessage(discord.NewMessageCreateBuilder().
+			SetContent(data.String("message")).
+			Build(),
+		)
+		if err != nil {
+			log.Fatal(err)
+		}
 	}
 }
