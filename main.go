@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"log"
 	"math/rand/v2"
 	"os"
@@ -157,29 +156,58 @@ func (m *NgramModel) generate(seed string, length int) string {
 	return out
 }
 
-type Observation struct {
-	content string
-	author  string
-	time    time.Time
+type TimeSpan struct {
+	start time.Time
+	end   time.Time
 }
 
-func (o *Observation) String() {
-	if o == nil {
-		return
+func (ts *TimeSpan) DuringSpan(t time.Time) bool {
+	return t.After(ts.start) && t.Before(ts.end)
+}
+
+func (ts *TimeSpan) ExtendSpan(t time.Time) {
+	if t.After(ts.end) {
+		ts.end = t
 	}
-	fmt.Printf("Observation: %s\nAuthor: %s\nTime: %s\n", o.content, o.author, o.time.Format(time.RFC3339))
 }
 
-func make_observation(msg discord.Message) Observation {
-	return Observation{msg.Content, msg.Author.Username, msg.CreatedAt}
+func (ts *TimeSpan) Union(other *TimeSpan) {
+	if other.start.Before(ts.start) {
+		ts.start = other.start
+	}
+	if other.end.After(ts.end) {
+		ts.end = other.end
+	}
+}
+
+func makeSpan(timestamp time.Time) *TimeSpan {
+	return &TimeSpan{
+		start: timestamp,
+		end:   timestamp,
+	}
 }
 
 type Brain struct {
-	model *NgramModel
+	model        *NgramModel
+	trainedSpans map[snowflake.ID]*TimeSpan
 }
 
 func (b *Brain) observe(obs discord.Message) {
+	var span = b.trainedSpans[obs.ChannelID]
+
+	if b.trainedSpans[obs.ChannelID] != nil {
+		if span.DuringSpan(obs.CreatedAt) {
+			return
+		}
+	}
+
 	b.model.train(obs.Content)
+
+	if b.trainedSpans[obs.ChannelID] == nil {
+		b.trainedSpans[obs.ChannelID] = makeSpan(obs.CreatedAt)
+	} else {
+		b.trainedSpans[obs.ChannelID].ExtendSpan(obs.CreatedAt)
+	}
 }
 
 var (
