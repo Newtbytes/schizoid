@@ -10,14 +10,13 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/joho/godotenv"
-
 	"github.com/disgoorg/disgo"
 	"github.com/disgoorg/disgo/bot"
 	"github.com/disgoorg/disgo/discord"
 	"github.com/disgoorg/disgo/events"
 	"github.com/disgoorg/disgo/gateway"
 	"github.com/disgoorg/snowflake/v2"
+	"github.com/joho/godotenv"
 )
 
 type Tokenizer interface {
@@ -50,35 +49,30 @@ func (c *CharTokenizer) VocabSize() int {
 }
 
 type NgramModel struct {
-	// actually just a bigram model TwT
-	counts [][]uint64
+	counts map[string]uint64
 
 	tokenizer Tokenizer
+	n         int
 }
 
-func NewNgramModel(tokenizer Tokenizer) *NgramModel {
+func NewNgramModel(tokenizer Tokenizer, n int) *NgramModel {
 	model := &NgramModel{
+		counts:    make(map[string]uint64),
 		tokenizer: tokenizer,
-	}
-
-	// Initialize counts
-	vocabSize := tokenizer.VocabSize()
-	model.counts = make([][]uint64, vocabSize)
-	for i := range model.counts {
-		model.counts[i] = make([]uint64, vocabSize)
+		n:         n,
 	}
 
 	return model
 }
 
-func bigrams(text []uint8) [][]uint8 {
-	var bigrams [][]uint8
+func ngrams(tokens []uint8, n int) [][]uint8 {
+	var ngrams [][]uint8
 
-	for i := 0; i < len(text)-1; i++ {
-		bigrams = append(bigrams, []uint8{text[i], text[i+1]})
+	for i := 0; i < len(tokens)-n; i++ {
+		ngrams = append(ngrams, tokens[i:i+n])
 	}
 
-	return bigrams
+	return ngrams
 }
 
 func (m *NgramModel) train(sample string) {
@@ -88,8 +82,8 @@ func (m *NgramModel) train(sample string) {
 
 	// add end of text token
 	tokens := append(m.tokenizer.Encode(sample), 0)
-	for _, bigram := range bigrams(tokens) {
-		m.counts[bigram[0]][bigram[1]]++
+	for _, ngram := range ngrams(tokens, m.n) {
+		m.counts[m.tokenizer.Decode(ngram)]++
 	}
 }
 
@@ -98,15 +92,17 @@ func (m *NgramModel) probs(text string) []float64 {
 	total := uint64(0)
 
 	// context is a single character as this is a bigram model
-	context := m.tokenizer.Encode(text)[len(text)-1]
+	context := m.tokenizer.Encode(text)[len(text)-m.n+1:]
 
 	for i := 0; i < len(m.counts); i++ {
-		total += m.counts[context][i]
+		var query = append(context, uint8(i))
+		total += m.counts[m.tokenizer.Decode(query)]
 	}
 
 	for i := 0; i < len(m.counts); i++ {
 		if total > 0 {
-			probs = append(probs, float64(m.counts[context][i])/float64(total))
+			var query = append(context, uint8(i))
+			probs = append(probs, float64(m.counts[m.tokenizer.Decode(query)])/float64(total))
 		} else {
 			probs = append(probs, 0.0)
 		}
@@ -234,7 +230,7 @@ var (
 func retrieve_guild_brain(id snowflake.ID) *Brain {
 	if guilds[id] == nil {
 		guilds[id] = new(Brain)
-		guilds[id].model = NewNgramModel(&CharTokenizer{})
+		guilds[id].model = NewNgramModel(&CharTokenizer{}, 5)
 	}
 
 	return guilds[id]
