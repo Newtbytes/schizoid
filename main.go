@@ -153,46 +153,62 @@ func (m *NgramModel) generate(seed string, length int) string {
 	return out
 }
 
-type TimeSpan struct {
+type TrainedSpan struct {
 	start time.Time
 	end   time.Time
+
+	startID snowflake.ID
+	endID   snowflake.ID
 }
 
-func (ts *TimeSpan) DuringSpan(t time.Time) bool {
-	return t.After(ts.start) && t.Before(ts.end)
+func (ts *TrainedSpan) DuringSpan(t time.Time) bool {
+	return (t.After(ts.start) && t.Before(ts.end)) || t.Equal(ts.start) || t.Equal(ts.end)
 }
 
-func (ts *TimeSpan) ExtendSpan(t time.Time) {
+func (ts *TrainedSpan) ExtendSpan(msg discord.Message) {
+	var t = msg.CreatedAt
+
 	if t.After(ts.end) {
 		ts.end = t
+		ts.endID = msg.ID
+	}
+
+	if t.Before(ts.start) {
+		ts.start = t
+		ts.startID = msg.ID
 	}
 }
 
-func (ts *TimeSpan) Union(other *TimeSpan) {
+func (ts *TrainedSpan) Union(other *TrainedSpan) {
 	if other.start.Before(ts.start) {
 		ts.start = other.start
+		ts.startID = other.startID
 	}
 	if other.end.After(ts.end) {
 		ts.end = other.end
+		ts.endID = other.endID
 	}
 }
 
-func makeSpan(timestamp time.Time) *TimeSpan {
-	return &TimeSpan{
-		start: timestamp,
-		end:   timestamp,
+func makeSpan(msg discord.Message) *TrainedSpan {
+	return &TrainedSpan{
+		start: msg.CreatedAt,
+		end:   msg.CreatedAt,
+
+		startID: msg.ID,
+		endID:   msg.ID,
 	}
 }
 
 type Brain struct {
 	model        *NgramModel
-	trainedSpans map[snowflake.ID]*TimeSpan
+	trainedSpans map[snowflake.ID]*TrainedSpan
 }
 
 func NewBrain() *Brain {
 	b := &Brain{
 		model:        NewNgramModel(&CharTokenizer{}, 5),
-		trainedSpans: make(map[snowflake.ID]*TimeSpan),
+		trainedSpans: make(map[snowflake.ID]*TrainedSpan),
 	}
 
 	return b
@@ -210,15 +226,39 @@ func (b *Brain) observe(obs discord.Message) {
 	b.model.train(obs.Content)
 
 	if b.trainedSpans[obs.ChannelID] == nil {
-		b.trainedSpans[obs.ChannelID] = makeSpan(obs.CreatedAt)
+		b.trainedSpans[obs.ChannelID] = makeSpan(obs)
 	} else {
-		b.trainedSpans[obs.ChannelID].ExtendSpan(obs.CreatedAt)
+		b.trainedSpans[obs.ChannelID].ExtendSpan(obs)
 	}
+
+}
+
+func (b *Brain) observeSomeMessages(client bot.Client, channelID snowflake.ID) {
+	if b.trainedSpans[channelID] == nil {
+		return
+	}
+
+	var msgID = b.trainedSpans[channelID].startID
+
+	slog.Info("Observing messages in channel", slog.String("channelID", channelID.String()), slog.Time("start", b.trainedSpans[channelID].start))
+
+	var messages, err = client.Rest().GetMessages(channelID, msgID, msgID, msgID, 25)
+
+	if err != nil {
+		return
+	}
+
+	for _, msg := range messages {
+		b.observe(msg)
+	}
+
+	slog.Info("Trained:", slog.String("channelID", channelID.String()), slog.Time("start", b.trainedSpans[channelID].start), slog.Time("end", b.trainedSpans[channelID].end))
 }
 
 var (
-	token   = os.Getenv("DISCORD_TOKEN")
-	guildID = snowflake.GetEnv("GUILD_ID")
+	token         = os.Getenv("DISCORD_TOKEN")
+	guildID       = snowflake.GetEnv("GUILD_ID")
+	trainInterval = os.Getenv("TRAIN_INTERVAL_SECONDS")
 
 	commands = []discord.ApplicationCommandCreate{
 		discord.SlashCommandCreate{
@@ -260,7 +300,9 @@ func main() {
 			gateway.WithIntents(
 				gateway.IntentGuildMessages,
 				gateway.IntentMessageContent,
+				gateway.IntentGuildScheduledEvents,
 			),
+			gateway.WithRateLimiter(gateway.NewRateLimiter()),
 		),
 		bot.WithEventListenerFunc(onMessageCreate),
 		bot.WithEventListenerFunc(commandListener),
@@ -284,9 +326,39 @@ func main() {
 	}
 
 	log.Print("schizoid is now running. Press CTRL-C to exit.")
+
+	go observeChannels(client, guildID)
+
 	s := make(chan os.Signal, 1)
 	signal.Notify(s, syscall.SIGINT, syscall.SIGTERM, os.Interrupt)
 	<-s
+}
+
+func observeChannels(client bot.Client, guildID snowflake.ID) {
+	brain := retrieve_guild_brain(guildID)
+
+	var env = os.Getenv("TRAIN_INTERVAL_SECONDS")
+	if env == "" {
+		env = "60"
+	}
+
+	var trainInterval, err = time.ParseDuration(env + "s")
+	if err != nil {
+		slog.Error("Failed to parse TRAIN_INTERVAL_SECONDS", slog.Any("err", err))
+		trainInterval = 60 * time.Second
+	}
+
+	for {
+		if len(brain.trainedSpans) == 0 {
+			continue
+		}
+
+		for channelID := range brain.trainedSpans {
+			go brain.observeSomeMessages(client, channelID)
+		}
+
+		time.Sleep(trainInterval)
+	}
 }
 
 func onMessageCreate(event *events.MessageCreate) {
