@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"log"
+	"log/slog"
 	"math/rand/v2"
 	"os"
 	"os/signal"
@@ -188,6 +189,15 @@ type Brain struct {
 	trainedSpans map[snowflake.ID]*TimeSpan
 }
 
+func NewBrain() *Brain {
+	b := &Brain{
+		model:        NewNgramModel(&CharTokenizer{}, 5),
+		trainedSpans: make(map[snowflake.ID]*TimeSpan),
+	}
+
+	return b
+}
+
 func (b *Brain) observe(obs discord.Message) {
 	var span = b.trainedSpans[obs.ChannelID]
 
@@ -229,7 +239,7 @@ var (
 
 func retrieve_guild_brain(id snowflake.ID) *Brain {
 	if guilds[id] == nil {
-		guilds[id] = new(Brain)
+		guilds[id] = NewBrain()
 		guilds[id].model = NewNgramModel(&CharTokenizer{}, 5)
 	}
 
@@ -239,7 +249,7 @@ func retrieve_guild_brain(id snowflake.ID) *Brain {
 func main() {
 	err := godotenv.Load()
 	if err != nil {
-		log.Fatalf("Failed to load environment: %s", err)
+		slog.Error("Failed to load environment", slog.Any("err", err))
 	}
 
 	token = os.Getenv("DISCORD_TOKEN")
@@ -257,18 +267,19 @@ func main() {
 	)
 
 	if err != nil {
-		log.Fatalf("Failed to create client: %s", err)
+		slog.Error("Failed to create client", slog.Any("err", err))
+		return
 	}
 
 	defer client.Close(context.TODO())
 
 	if _, err = client.Rest().SetGuildCommands(client.ApplicationID(), guildID, commands); err != nil {
-		log.Fatalf("Failed to setup commands: %s", err)
+		slog.Error("Failed to setup commands", slog.Any("err", err))
 		return
 	}
 
 	if err = client.OpenGateway(context.TODO()); err != nil {
-		log.Fatalf("Failed to open gateway: %s", err)
+		slog.Error("Failed to open gateway", slog.Any("err", err))
 		return
 	}
 
