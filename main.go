@@ -375,6 +375,10 @@ func onMessageCreate(event *events.MessageCreate) {
 		message = schizo.model.generate(seed, 100)
 	}
 
+	if message == event.Message.Content {
+		message = "Failed to generate message"
+	}
+
 	if message != "" {
 		_, _ = event.Client().Rest().CreateMessage(event.ChannelID, discord.NewMessageCreateBuilder().SetContent(message).Build())
 	}
