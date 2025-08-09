@@ -337,15 +337,15 @@ func main() {
 func observeChannels(client bot.Client, guildID snowflake.ID) {
 	brain := retrieve_guild_brain(guildID)
 
-	var env = os.Getenv("TRAIN_INTERVAL_SECONDS")
-	if env == "" {
-		env = "60"
+	trainInterval = os.Getenv("TRAIN_INTERVAL_SECONDS")
+	if trainInterval == "" {
+		trainInterval = "60"
 	}
 
-	var trainInterval, err = time.ParseDuration(env + "s")
+	var interval, err = time.ParseDuration(trainInterval + "s")
 	if err != nil {
 		slog.Error("Failed to parse TRAIN_INTERVAL_SECONDS", slog.Any("err", err))
-		trainInterval = 60 * time.Second
+		interval = 60 * time.Second
 	}
 
 	for {
@@ -357,7 +357,7 @@ func observeChannels(client bot.Client, guildID snowflake.ID) {
 			go brain.observeSomeMessages(client, channelID)
 		}
 
-		time.Sleep(trainInterval)
+		time.Sleep(interval)
 	}
 }
 
