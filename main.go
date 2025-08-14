@@ -22,29 +22,15 @@ import (
 
 var (
 	token         = os.Getenv("DISCORD_TOKEN")
-	guildID       = snowflake.GetEnv("GUILD_ID")
 	trainInterval = os.Getenv("TRAIN_INTERVAL_SECONDS")
-
-	commands = []discord.ApplicationCommandCreate{
-		discord.SlashCommandCreate{
-			Name:        "echo",
-			Description: "repeats what you say back to you",
-			Options: []discord.ApplicationCommandOption{
-				discord.ApplicationCommandOptionString{
-					Name:        "message",
-					Description: "What to say",
-					Required:    true,
-				},
-			},
-		},
-	}
 
 	guilds = make(map[snowflake.ID]*Brain)
 )
 
-func retrieve_guild_brain(id snowflake.ID) *Brain {
+func retrieve_guild_brain(client bot.Client, id snowflake.ID) *Brain {
 	if guilds[id] == nil {
 		guilds[id] = NewBrain()
+		go observeChannels(client, id)
 	}
 
 	return guilds[id]
@@ -57,7 +43,6 @@ func main() {
 	}
 
 	token = os.Getenv("DISCORD_TOKEN")
-	guildID = snowflake.GetEnv("GUILD_ID")
 
 	client, err := disgo.New(token,
 		bot.WithCacheConfigOpts(
@@ -83,11 +68,6 @@ func main() {
 
 	defer client.Close(context.TODO())
 
-	if _, err = client.Rest().SetGuildCommands(client.ApplicationID(), guildID, commands); err != nil {
-		slog.Error("Failed to setup commands", slog.Any("err", err))
-		return
-	}
-
 	if err = client.OpenGateway(context.TODO()); err != nil {
 		slog.Error("Failed to open gateway", slog.Any("err", err))
 		return
@@ -95,15 +75,13 @@ func main() {
 
 	log.Print("schizoid is now running. Press CTRL-C to exit.")
 
-	go observeChannels(client, guildID)
-
 	s := make(chan os.Signal, 1)
 	signal.Notify(s, syscall.SIGINT, syscall.SIGTERM, os.Interrupt)
 	<-s
 }
 
 func observeChannels(client bot.Client, guildID snowflake.ID) {
-	brain := retrieve_guild_brain(guildID)
+	brain := retrieve_guild_brain(client, guildID)
 
 	trainInterval = os.Getenv("TRAIN_INTERVAL_SECONDS")
 	if trainInterval == "" {
@@ -135,7 +113,7 @@ func onMessageCreate(event *events.MessageCreate) {
 		return
 	}
 
-	var schizo = retrieve_guild_brain(*event.GuildID)
+	var schizo = retrieve_guild_brain(event.Client(), *event.GuildID)
 	schizo.observe(event.Message)
 
 	var message string
