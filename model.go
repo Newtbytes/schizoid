@@ -53,7 +53,11 @@ func NewNgramModel(tokenizer Tokenizer, n int, smoothing uint64) *NgramModel {
 func ngrams(tokens []uint8, n int) [][]uint8 {
 	var ngrams [][]uint8
 
-	for i := 0; i < len(tokens)-n; i++ {
+	if n > len(tokens) || n <= 0 {
+		return ngrams
+	}
+
+	for i := 0; i <= len(tokens)-n; i++ {
 		ngrams = append(ngrams, tokens[i:i+n])
 	}
 
