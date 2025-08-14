@@ -2,6 +2,7 @@ package main
 
 import (
 	"log/slog"
+	"sync"
 	"time"
 
 	"github.com/disgoorg/disgo/bot"
@@ -59,6 +60,8 @@ func makeSpan(msg discord.Message) *TrainedSpan {
 type Brain struct {
 	model        *NgramModel
 	trainedSpans map[snowflake.ID]*TrainedSpan
+
+	mu sync.RWMutex
 }
 
 func NewBrain() *Brain {
@@ -70,33 +73,59 @@ func NewBrain() *Brain {
 	return b
 }
 
-func (b *Brain) observe(obs discord.Message) {
-	var span = b.trainedSpans[obs.ChannelID]
+func (b *Brain) getTrainedSpan(channelID snowflake.ID) *TrainedSpan {
+	b.mu.RLock()
 
-	if b.trainedSpans[obs.ChannelID] != nil {
+	ts := b.trainedSpans[channelID]
+	if ts == nil {
+		b.mu.RUnlock()
+		return nil
+	}
+
+	b.mu.RUnlock()
+
+	return ts
+}
+
+func (b *Brain) setTrainedSpan(channelID snowflake.ID, span *TrainedSpan) {
+	b.mu.Lock()
+
+	b.trainedSpans[channelID] = span
+
+	b.mu.Unlock()
+}
+
+func (b *Brain) observe(obs discord.Message) {
+	var span = b.getTrainedSpan(obs.ChannelID)
+
+	if span != nil {
 		if span.DuringSpan(obs.CreatedAt) {
 			return
 		}
 	}
 
+	b.mu.Lock()
 	b.model.train(obs.Content)
+	b.mu.Unlock()
 
-	if b.trainedSpans[obs.ChannelID] == nil {
-		b.trainedSpans[obs.ChannelID] = makeSpan(obs)
+	if span == nil {
+		b.setTrainedSpan(obs.ChannelID, makeSpan(obs))
 	} else {
-		b.trainedSpans[obs.ChannelID].ExtendSpan(obs)
+		span.ExtendSpan(obs)
+		b.setTrainedSpan(obs.ChannelID, span)
 	}
-
 }
 
 func (b *Brain) observeSomeMessages(client bot.Client, channelID snowflake.ID) {
-	if b.trainedSpans[channelID] == nil {
+	var span = b.getTrainedSpan(channelID)
+
+	if span == nil {
 		return
 	}
 
-	var msgID = b.trainedSpans[channelID].startID
+	var msgID = span.startID
 
-	slog.Info("Observing messages in channel", slog.String("channelID", channelID.String()), slog.Time("start", b.trainedSpans[channelID].start))
+	slog.Info("Observing messages in channel", slog.String("channelID", channelID.String()), slog.Time("start", span.start))
 
 	var messages, err = client.Rest().GetMessages(channelID, msgID, msgID, msgID, 25)
 
