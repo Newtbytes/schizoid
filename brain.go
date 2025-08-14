@@ -104,6 +104,10 @@ func (b *Brain) observe(obs discord.Message) {
 		}
 	}
 
+	if obs.Author.Bot {
+		return
+	}
+
 	b.mu.Lock()
 	b.model.train(obs.Content)
 	b.mu.Unlock()
