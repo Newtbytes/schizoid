@@ -118,6 +118,7 @@ func observeChannels(client bot.Client, guildID snowflake.ID) {
 
 	for {
 		if len(brain.trainedSpans) == 0 {
+			time.Sleep(time.Second)
 			continue
 		}
 
