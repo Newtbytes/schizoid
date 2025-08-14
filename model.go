@@ -74,19 +74,32 @@ func (m *NgramModel) train(sample string) {
 
 func (m *NgramModel) probs(text string) []float64 {
 	var probs []float64
-	total := uint64(m.smoothing)
+	total := uint64(0)
 
-	// context is a single character as this is a bigram model
-	context := m.tokenizer.Encode(text)[len(text)-m.n+1:]
+	var vocabSize = m.tokenizer.VocabSize()
 
-	for i := 0; i < len(m.counts); i++ {
-		var query = append(context, uint8(i))
-		total += m.counts[m.tokenizer.Decode(query)]
+	num := m.n - 1 - len(text)
+	for i := 0; i < num; i++ {
+		text = "\x00" + text
 	}
 
-	for i := 0; i < len(m.counts); i++ {
+	context := m.tokenizer.Encode(text)
+	context = context[len(context)-m.n+1:]
+
+	var continuation = func(tok uint8) []uint8 {
+		out := make([]uint8, len(context))
+		copy(out, context)
+		return append(out, tok)
+	}
+
+	for i := range vocabSize {
+		var query = continuation(uint8(i))
+		total += m.counts[m.tokenizer.Decode(query)] + m.smoothing
+	}
+
+	for i := range vocabSize {
 		if total > 0 {
-			var query = append(context, uint8(i))
+			var query = continuation(uint8(i))
 			var count = m.counts[m.tokenizer.Decode(query)] + m.smoothing
 			probs = append(probs, float64(count)/float64(total))
 		} else {

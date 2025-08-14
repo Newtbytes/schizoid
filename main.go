@@ -119,11 +119,7 @@ func onMessageCreate(event *events.MessageCreate) {
 	var message string
 	if strings.HasPrefix(event.Message.Content, "?schizoid") {
 		var seed = event.Message.Content[len("?schizoid "):]
-		message = schizo.model.generate(seed, 100)
-	}
-
-	if message == event.Message.Content {
-		message = "Failed to generate message"
+		message = schizo.generate(seed, 100)
 	}
 
 	if message != "" {

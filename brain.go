@@ -139,3 +139,11 @@ func (b *Brain) observeSomeMessages(client bot.Client, channelID snowflake.ID) {
 
 	slog.Info("Trained:", slog.String("channelID", channelID.String()), slog.Time("start", b.trainedSpans[channelID].start), slog.Time("end", b.trainedSpans[channelID].end))
 }
+
+func (b *Brain) generate(seed string, length int) string {
+	b.mu.Lock()
+	var out = b.model.generate(seed, length)
+	b.mu.Unlock()
+
+	return out
+}
