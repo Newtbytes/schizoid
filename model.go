@@ -36,10 +36,10 @@ type NgramModel struct {
 
 	tokenizer Tokenizer
 	n         int
-	smoothing uint64
+	smoothing float64
 }
 
-func NewNgramModel(tokenizer Tokenizer, n int, smoothing uint64) *NgramModel {
+func NewNgramModel(tokenizer Tokenizer, n int, smoothing float64) *NgramModel {
 	model := &NgramModel{
 		counts:    make(map[string]uint64),
 		tokenizer: tokenizer,
@@ -78,7 +78,7 @@ func (m *NgramModel) train(sample string) {
 
 func (m *NgramModel) probs(text string) []float64 {
 	var probs []float64
-	total := uint64(0)
+	total := float64(0)
 
 	var vocabSize = m.tokenizer.VocabSize()
 
@@ -98,14 +98,16 @@ func (m *NgramModel) probs(text string) []float64 {
 
 	for i := range vocabSize {
 		var query = continuation(uint8(i))
-		total += m.counts[m.tokenizer.Decode(query)] + m.smoothing
+		total += float64(m.counts[m.tokenizer.Decode(query)])
 	}
+
+	total += float64(vocabSize) * m.smoothing
 
 	for i := range vocabSize {
 		if total > 0 {
 			var query = continuation(uint8(i))
-			var count = m.counts[m.tokenizer.Decode(query)] + m.smoothing
-			probs = append(probs, float64(count)/float64(total))
+			var count = float64(m.counts[m.tokenizer.Decode(query)]) + m.smoothing
+			probs = append(probs, count/total)
 		} else {
 			probs = append(probs, 0.0)
 		}
@@ -144,12 +146,13 @@ func (m *NgramModel) generate(seed string, length int) string {
 
 	for i := 0; i < length; i++ {
 		sampled := sample(m.probs(out))
-		if sampled == 0 {
-			break
-		}
 
 		var next = m.tokenizer.Decode([]uint8{uint8(sampled)})
 		out += next
+
+		if sampled == 0 {
+			break
+		}
 	}
 
 	return out
