@@ -45,7 +45,7 @@ var (
 func retrieve_guild_brain(id snowflake.ID) *Brain {
 	if guilds[id] == nil {
 		guilds[id] = NewBrain()
-		guilds[id].model = NewNgramModel(&CharTokenizer{}, 5)
+		guilds[id].model = NewNgramModel(&CharTokenizer{}, 5, 1)
 	}
 
 	return guilds[id]

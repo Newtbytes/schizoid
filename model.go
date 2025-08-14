@@ -36,13 +36,15 @@ type NgramModel struct {
 
 	tokenizer Tokenizer
 	n         int
+	smoothing uint64
 }
 
-func NewNgramModel(tokenizer Tokenizer, n int) *NgramModel {
+func NewNgramModel(tokenizer Tokenizer, n int, smoothing uint64) *NgramModel {
 	model := &NgramModel{
 		counts:    make(map[string]uint64),
 		tokenizer: tokenizer,
 		n:         n,
+		smoothing: smoothing,
 	}
 
 	return model
@@ -72,7 +74,7 @@ func (m *NgramModel) train(sample string) {
 
 func (m *NgramModel) probs(text string) []float64 {
 	var probs []float64
-	total := uint64(0)
+	total := uint64(m.smoothing)
 
 	// context is a single character as this is a bigram model
 	context := m.tokenizer.Encode(text)[len(text)-m.n+1:]
@@ -85,7 +87,8 @@ func (m *NgramModel) probs(text string) []float64 {
 	for i := 0; i < len(m.counts); i++ {
 		if total > 0 {
 			var query = append(context, uint8(i))
-			probs = append(probs, float64(m.counts[m.tokenizer.Decode(query)])/float64(total))
+			var count = m.counts[m.tokenizer.Decode(query)] + m.smoothing
+			probs = append(probs, float64(count)/float64(total))
 		} else {
 			probs = append(probs, 0.0)
 		}

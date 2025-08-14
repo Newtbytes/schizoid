@@ -63,7 +63,7 @@ type Brain struct {
 
 func NewBrain() *Brain {
 	b := &Brain{
-		model:        NewNgramModel(&CharTokenizer{}, 5),
+		model:        NewNgramModel(&CharTokenizer{}, 5, 1),
 		trainedSpans: make(map[snowflake.ID]*TrainedSpan),
 	}
 
