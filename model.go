@@ -171,3 +171,23 @@ func (m *NgramModel) generate(seed string, length int) string {
 
 	return out
 }
+
+func (m *NgramModel) forget(text string) {
+	if len(text) == 0 {
+		return
+	}
+
+	tokens := m.tokenizer.Encode(text)
+	tokens = append(tokens, 0) // add end of text token
+
+	for n := range m.N + 1 {
+		for _, ngram := range ngrams(tokens, n) {
+			key := m.tokenizer.Decode(ngram)
+			if count, exists := m.Counts[key]; exists {
+				if count > 0 {
+					m.Counts[key]--
+				}
+			}
+		}
+	}
+}

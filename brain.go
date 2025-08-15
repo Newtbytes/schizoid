@@ -144,6 +144,18 @@ func LoadBrain(guildID snowflake.ID) *Brain {
 	return &brain
 }
 
+func (b *Brain) shouldObserve(obs discord.Message) bool {
+	if obs.Author.Bot {
+		return false
+	}
+
+	if len(obs.Content) == 0 {
+		return false
+	}
+
+	return true
+}
+
 func (b *Brain) observe(obs discord.Message) {
 	var span = b.getTrainedSpan(obs.ChannelID)
 
@@ -153,13 +165,11 @@ func (b *Brain) observe(obs discord.Message) {
 		}
 	}
 
-	if obs.Author.Bot {
-		return
+	if b.shouldObserve(obs) {
+		b.mu.Lock()
+		b.Model.train(obs.Content)
+		b.mu.Unlock()
 	}
-
-	b.mu.Lock()
-	b.Model.train(obs.Content)
-	b.mu.Unlock()
 
 	if span == nil {
 		b.setTrainedSpan(obs.ChannelID, makeSpan(obs))
@@ -196,4 +206,29 @@ func (b *Brain) generate(seed string, length int) string {
 	defer b.mu.Unlock()
 
 	return b.Model.generate(seed, length)
+}
+
+func (b *Brain) forget(obs discord.Message) {
+	if len(obs.Content) == 0 {
+		return
+	}
+
+	if !b.shouldObserve(obs) {
+		return
+	}
+
+	span := b.getTrainedSpan(obs.ChannelID)
+	if span == nil {
+		return
+	}
+
+	// avoid forgetting messages that have not been observed
+	if !span.DuringSpan(obs.CreatedAt) {
+		return
+	}
+
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	b.Model.forget(obs.Content)
 }

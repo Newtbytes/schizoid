@@ -58,6 +58,7 @@ func main() {
 			gateway.WithRateLimiter(gateway.NewRateLimiter()),
 		),
 		bot.WithEventListenerFunc(onMessageCreate),
+		bot.WithEventListenerFunc(onMessageDelete),
 	)
 
 	if err != nil {
@@ -129,4 +130,21 @@ func onMessageCreate(event *events.MessageCreate) {
 	if message != "" {
 		_, _ = event.Client().Rest().CreateMessage(event.ChannelID, discord.NewMessageCreateBuilder().SetContent(message).Build())
 	}
+}
+
+func onMessageDelete(event *events.MessageDelete) {
+	if event.Message.Author.Bot {
+		return
+	}
+
+	var schizo = retrieve_guild_brain(event.Client(), *event.GuildID)
+
+	schizo.forget(event.Message)
+
+	slog.Info(
+		"Message was deleted and forgotten",
+		slog.String("messageID", event.MessageID.String()),
+		slog.String("channelID", event.ChannelID.String()),
+		slog.String("guildID", event.GuildID.String()),
+	)
 }
