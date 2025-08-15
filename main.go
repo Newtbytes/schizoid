@@ -58,7 +58,6 @@ func main() {
 			gateway.WithRateLimiter(gateway.NewRateLimiter()),
 		),
 		bot.WithEventListenerFunc(onMessageCreate),
-		bot.WithEventListenerFunc(commandListener),
 	)
 
 	if err != nil {
@@ -129,18 +128,5 @@ func onMessageCreate(event *events.MessageCreate) {
 
 	if message != "" {
 		_, _ = event.Client().Rest().CreateMessage(event.ChannelID, discord.NewMessageCreateBuilder().SetContent(message).Build())
-	}
-}
-
-func commandListener(event *events.ApplicationCommandInteractionCreate) {
-	data := event.SlashCommandInteractionData()
-	if data.CommandName() == "echo" {
-		err := event.CreateMessage(discord.NewMessageCreateBuilder().
-			SetContent(data.String("message")).
-			Build(),
-		)
-		if err != nil {
-			log.Fatal(err)
-		}
 	}
 }
