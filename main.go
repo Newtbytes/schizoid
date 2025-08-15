@@ -29,7 +29,7 @@ var (
 
 func retrieve_guild_brain(client bot.Client, id snowflake.ID) *Brain {
 	if guilds[id] == nil {
-		guilds[id] = NewBrain()
+		guilds[id] = LoadBrain(id)
 		go observeChannels(client, id)
 	}
 
@@ -67,6 +67,11 @@ func main() {
 	}
 
 	defer client.Close(context.TODO())
+	defer func() {
+		for _, brain := range guilds {
+			brain.Save()
+		}
+	}()
 
 	if err = client.OpenGateway(context.TODO()); err != nil {
 		slog.Error("Failed to open gateway", slog.Any("err", err))
@@ -95,12 +100,12 @@ func observeChannels(client bot.Client, guildID snowflake.ID) {
 	}
 
 	for {
-		if len(brain.trainedSpans) == 0 {
+		if len(brain.TrainedSpans) == 0 {
 			time.Sleep(time.Second)
 			continue
 		}
 
-		for channelID := range brain.trainedSpans {
+		for channelID := range brain.TrainedSpans {
 			go brain.observeSomeMessages(client, channelID)
 		}
 

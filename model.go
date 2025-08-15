@@ -32,19 +32,19 @@ func (c *CharTokenizer) VocabSize() int {
 }
 
 type NgramModel struct {
-	counts map[string]uint64
+	Counts map[string]uint64
 
 	tokenizer Tokenizer
-	n         int
-	smoothing float64
+	N         int
+	Smoothing float64
 }
 
 func NewNgramModel(tokenizer Tokenizer, n int, smoothing float64) *NgramModel {
 	model := &NgramModel{
-		counts:    make(map[string]uint64),
+		Counts:    make(map[string]uint64),
 		tokenizer: tokenizer,
-		n:         n,
-		smoothing: smoothing,
+		N:         n,
+		Smoothing: smoothing,
 	}
 
 	return model
@@ -72,9 +72,9 @@ func (m *NgramModel) train(sample string) {
 	// add end of text token
 	tokens := append(m.tokenizer.Encode(sample), 0)
 
-	for n := range m.n + 1 {
+	for n := range m.N + 1 {
 		for _, ngram := range ngrams(tokens, n) {
-			m.counts[m.tokenizer.Decode(ngram)]++
+			m.Counts[m.tokenizer.Decode(ngram)]++
 		}
 	}
 }
@@ -88,7 +88,7 @@ func (m *NgramModel) countOf(ctx []uint8) uint64 {
 			break
 		}
 
-		count = m.counts[m.tokenizer.Decode(ctx)]
+		count = m.Counts[m.tokenizer.Decode(ctx)]
 
 		if count == 0 {
 			ctx = ctx[1:]
@@ -107,7 +107,7 @@ func (m *NgramModel) probs(text string) []float64 {
 	var vocabSize = m.tokenizer.VocabSize()
 
 	context := m.tokenizer.Encode(text)
-	context = context[len(context)-m.n+1:]
+	context = context[len(context)-m.N+1:]
 
 	var continuation = func(tok uint8) []uint8 {
 		out := make([]uint8, len(context))
@@ -119,11 +119,11 @@ func (m *NgramModel) probs(text string) []float64 {
 		total += float64(m.countOf(continuation(uint8(i))))
 	}
 
-	total += float64(vocabSize) * m.smoothing
+	total += float64(vocabSize) * m.Smoothing
 
 	for i := range vocabSize {
 		if total > 0 {
-			var count = float64(m.countOf(continuation(uint8(i)))) + m.smoothing
+			var count = float64(m.countOf(continuation(uint8(i)))) + m.Smoothing
 			probs = append(probs, count/total)
 		} else {
 			probs = append(probs, 0.0)

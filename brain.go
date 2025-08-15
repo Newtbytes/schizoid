@@ -1,7 +1,10 @@
 package main
 
 import (
+	"bytes"
+	"encoding/gob"
 	"log/slog"
+	"os"
 	"sync"
 	"time"
 
@@ -11,63 +14,65 @@ import (
 )
 
 type TrainedSpan struct {
-	start time.Time
-	end   time.Time
+	Start time.Time
+	End   time.Time
 
-	startID snowflake.ID
-	endID   snowflake.ID
+	StartID snowflake.ID
+	EndID   snowflake.ID
 }
 
 func (ts *TrainedSpan) DuringSpan(t time.Time) bool {
-	return (t.After(ts.start) && t.Before(ts.end)) || t.Equal(ts.start) || t.Equal(ts.end)
+	return (t.After(ts.Start) && t.Before(ts.End)) || t.Equal(ts.Start) || t.Equal(ts.End)
 }
 
 func (ts *TrainedSpan) ExtendSpan(msg discord.Message) {
 	var t = msg.CreatedAt
 
-	if t.After(ts.end) {
-		ts.end = t
-		ts.endID = msg.ID
+	if t.After(ts.End) {
+		ts.End = t
+		ts.EndID = msg.ID
 	}
 
-	if t.Before(ts.start) {
-		ts.start = t
-		ts.startID = msg.ID
+	if t.Before(ts.Start) {
+		ts.Start = t
+		ts.StartID = msg.ID
 	}
 }
 
 func (ts *TrainedSpan) Union(other *TrainedSpan) {
-	if other.start.Before(ts.start) {
-		ts.start = other.start
-		ts.startID = other.startID
+	if other.Start.Before(ts.Start) {
+		ts.Start = other.Start
+		ts.StartID = other.StartID
 	}
-	if other.end.After(ts.end) {
-		ts.end = other.end
-		ts.endID = other.endID
+	if other.End.After(ts.End) {
+		ts.End = other.End
+		ts.EndID = other.EndID
 	}
 }
 
 func makeSpan(msg discord.Message) *TrainedSpan {
 	return &TrainedSpan{
-		start: msg.CreatedAt,
-		end:   msg.CreatedAt,
+		Start: msg.CreatedAt,
+		End:   msg.CreatedAt,
 
-		startID: msg.ID,
-		endID:   msg.ID,
+		StartID: msg.ID,
+		EndID:   msg.ID,
 	}
 }
 
 type Brain struct {
-	model        *NgramModel
-	trainedSpans map[snowflake.ID]*TrainedSpan
+	Model        *NgramModel
+	TrainedSpans map[snowflake.ID]*TrainedSpan
+	GuildID      snowflake.ID
 
 	mu sync.RWMutex
 }
 
-func NewBrain() *Brain {
+func NewBrain(guildID snowflake.ID) *Brain {
 	b := &Brain{
-		model:        NewNgramModel(&CharTokenizer{}, 5, 0.1),
-		trainedSpans: make(map[snowflake.ID]*TrainedSpan),
+		Model:        NewNgramModel(&CharTokenizer{}, 5, 0.1),
+		TrainedSpans: make(map[snowflake.ID]*TrainedSpan),
+		GuildID:      guildID,
 	}
 
 	return b
@@ -76,7 +81,7 @@ func NewBrain() *Brain {
 func (b *Brain) getTrainedSpan(channelID snowflake.ID) *TrainedSpan {
 	b.mu.RLock()
 
-	ts := b.trainedSpans[channelID]
+	ts := b.TrainedSpans[channelID]
 	if ts == nil {
 		b.mu.RUnlock()
 		return nil
@@ -90,9 +95,59 @@ func (b *Brain) getTrainedSpan(channelID snowflake.ID) *TrainedSpan {
 func (b *Brain) setTrainedSpan(channelID snowflake.ID, span *TrainedSpan) {
 	b.mu.Lock()
 
-	b.trainedSpans[channelID] = span
+	b.TrainedSpans[channelID] = span
 
 	b.mu.Unlock()
+}
+
+func (b *Brain) Save() {
+	var buffer bytes.Buffer
+	encoder := gob.NewEncoder(&buffer)
+
+	err := encoder.Encode(b)
+	if err != nil {
+		slog.Error("Error serializing:", slog.Any("err", err))
+		return
+	}
+
+	if err := os.MkdirAll("models", 0755); err != nil {
+		slog.Error("Failed to create models directory", slog.Any("err", err))
+		return
+	}
+
+	fn := "models/" + b.GuildID.String() + ".brain"
+	os.WriteFile(fn, buffer.Bytes(), 0644)
+
+	slog.Info("Serialized guild brain with ID", slog.Any("guildID", b.GuildID))
+}
+
+func LoadBrain(guildID snowflake.ID) *Brain {
+	var buffer bytes.Buffer
+	fn := "models/" + guildID.String() + ".brain"
+
+	if _, err := os.Stat(fn); os.IsNotExist(err) {
+		slog.Info("Brain file does not exist, creating new brain", slog.Any("guildID", guildID))
+		return NewBrain(guildID)
+	}
+
+	data, err := os.ReadFile(fn)
+	if err != nil {
+		slog.Error("Failed to read brain file", slog.String("file", fn), slog.Any("error", err))
+		return NewBrain(guildID)
+	}
+
+	buffer.Write(data)
+
+	var brain Brain
+	decoder := gob.NewDecoder(&buffer)
+	err = decoder.Decode(&brain)
+	if err != nil {
+		slog.Error("Failed to decode brain data", slog.Any("error", err))
+		return NewBrain(guildID)
+	}
+
+	slog.Info("Loaded brain for guild", slog.Any("guildID", guildID), slog.Int("trainedSpans", len(brain.TrainedSpans)))
+	return &brain
 }
 
 func (b *Brain) observe(obs discord.Message) {
@@ -109,7 +164,7 @@ func (b *Brain) observe(obs discord.Message) {
 	}
 
 	b.mu.Lock()
-	b.model.train(obs.Content)
+	b.Model.train(obs.Content)
 	b.mu.Unlock()
 
 	if span == nil {
@@ -127,9 +182,9 @@ func (b *Brain) observeSomeMessages(client bot.Client, channelID snowflake.ID) {
 		return
 	}
 
-	var msgID = span.startID
+	var msgID = span.StartID
 
-	slog.Info("Observing messages in channel", slog.String("channelID", channelID.String()), slog.Time("start", span.start))
+	slog.Info("Observing messages in channel", slog.String("channelID", channelID.String()), slog.Time("start", span.Start))
 
 	var messages, err = client.Rest().GetMessages(channelID, msgID, msgID, msgID, 25)
 
@@ -141,12 +196,12 @@ func (b *Brain) observeSomeMessages(client bot.Client, channelID snowflake.ID) {
 		b.observe(msg)
 	}
 
-	slog.Info("Trained:", slog.String("channelID", channelID.String()), slog.Time("start", b.trainedSpans[channelID].start), slog.Time("end", b.trainedSpans[channelID].end))
+	slog.Info("Trained:", slog.String("channelID", channelID.String()), slog.Time("start", b.TrainedSpans[channelID].Start), slog.Time("end", b.TrainedSpans[channelID].End))
 }
 
 func (b *Brain) generate(seed string, length int) string {
 	b.mu.Lock()
-	var out = b.model.generate(seed, length)
+	var out = b.Model.generate(seed, length)
 	b.mu.Unlock()
 
 	return out
