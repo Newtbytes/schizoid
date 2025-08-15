@@ -184,8 +184,6 @@ func (b *Brain) observeSomeMessages(client bot.Client, channelID snowflake.ID) {
 
 	var msgID = span.StartID
 
-	slog.Info("Observing messages in channel", slog.String("channelID", channelID.String()), slog.Time("start", span.Start))
-
 	var messages, err = client.Rest().GetMessages(channelID, msgID, msgID, msgID, 25)
 
 	if err != nil {
