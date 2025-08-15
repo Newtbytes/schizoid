@@ -146,6 +146,8 @@ func LoadBrain(guildID snowflake.ID) *Brain {
 		return NewBrain(guildID)
 	}
 
+	brain.Model.tokenizer = &CharTokenizer{}
+
 	slog.Info("Loaded brain for guild", slog.Any("guildID", guildID), slog.Int("trainedSpans", len(brain.TrainedSpans)))
 	return &brain
 }
