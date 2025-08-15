@@ -124,7 +124,7 @@ func onMessageCreate(event *events.MessageCreate) {
 	var message string
 	if strings.HasPrefix(event.Message.Content, "?schizoid") {
 		var seed = event.Message.Content[len("?schizoid "):]
-		message = schizo.generate(seed, 100)
+		message = schizo.generate(seed, 512)
 	}
 
 	if message != "" {

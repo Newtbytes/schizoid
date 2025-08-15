@@ -1,28 +1,40 @@
 package main
 
-import "math/rand/v2"
+import (
+	"math/rand/v2"
+	"strings"
+)
+
+type Token int
 
 type Tokenizer interface {
-	Encode(text string) []uint8
-	Decode(tokens []uint8) string
+	Encode(text string) []Token
+	Decode(tokens []Token) string
 	VocabSize() int
 }
 
 type CharTokenizer struct{}
 
-func (c *CharTokenizer) Encode(text string) []uint8 {
-	var tokens []uint8
+func (c *CharTokenizer) Encode(text string) []Token {
+	text = strings.ToValidUTF8(text, "�")
+
+	var tokens []Token
 	for _, char := range text {
-		tokens = append(tokens, uint8(char))
+		tokens = append(tokens, Token(char))
 	}
+
 	return tokens
 }
 
-func (c *CharTokenizer) Decode(tokens []uint8) string {
+func (c *CharTokenizer) Decode(tokens []Token) string {
 	var text string
+
 	for _, token := range tokens {
-		text += string(byte(token))
+		text += string(token)
 	}
+
+	text = strings.ToValidUTF8(text, "�")
+
 	return text
 }
 
@@ -50,8 +62,8 @@ func NewNgramModel(tokenizer Tokenizer, n int, smoothing float64) *NgramModel {
 	return model
 }
 
-func ngrams(tokens []uint8, n int) [][]uint8 {
-	var ngrams [][]uint8
+func ngrams(tokens []Token, n int) [][]Token {
+	var ngrams [][]Token
 
 	if n > len(tokens) || n <= 0 {
 		return ngrams
@@ -79,7 +91,7 @@ func (m *NgramModel) train(sample string) {
 	}
 }
 
-func (m *NgramModel) countOf(ctx []uint8, nMin int) uint64 {
+func (m *NgramModel) countOf(ctx []Token, nMin int) uint64 {
 	var count uint64 = 0
 
 	for {
@@ -109,8 +121,8 @@ func (m *NgramModel) probs(text string) []float64 {
 	context := m.tokenizer.Encode(text)
 	context = context[len(context)-m.N+1:]
 
-	var continuation = func(tok uint8) []uint8 {
-		out := make([]uint8, len(context))
+	var continuation = func(tok Token) []Token {
+		out := make([]Token, len(context))
 		copy(out, context)
 		return append(out, tok)
 	}
@@ -119,7 +131,7 @@ func (m *NgramModel) probs(text string) []float64 {
 
 	for i := range vocabSize {
 		if total > 0 {
-			var count = float64(m.countOf(continuation(uint8(i)), m.N)) + m.Smoothing
+			var count = float64(m.countOf(continuation(Token(i)), m.N)) + m.Smoothing
 			probs = append(probs, count/total)
 		} else {
 			probs = append(probs, 0.0)
@@ -160,7 +172,7 @@ func (m *NgramModel) generate(seed string, length int) string {
 	for range length {
 		sampled := sample(m.probs(out))
 
-		var next = m.tokenizer.Decode([]uint8{uint8(sampled)})
+		var next = m.tokenizer.Decode([]Token{Token(sampled)})
 
 		if sampled == 0 {
 			break
