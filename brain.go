@@ -80,24 +80,16 @@ func NewBrain(guildID snowflake.ID) *Brain {
 
 func (b *Brain) getTrainedSpan(channelID snowflake.ID) *TrainedSpan {
 	b.mu.RLock()
+	defer b.mu.RUnlock()
 
-	ts := b.TrainedSpans[channelID]
-	if ts == nil {
-		b.mu.RUnlock()
-		return nil
-	}
-
-	b.mu.RUnlock()
-
-	return ts
+	return b.TrainedSpans[channelID]
 }
 
 func (b *Brain) setTrainedSpan(channelID snowflake.ID, span *TrainedSpan) {
 	b.mu.Lock()
+	defer b.mu.Unlock()
 
 	b.TrainedSpans[channelID] = span
-
-	b.mu.Unlock()
 }
 
 func (b *Brain) Save() {
@@ -201,8 +193,7 @@ func (b *Brain) observeSomeMessages(client bot.Client, channelID snowflake.ID) {
 
 func (b *Brain) generate(seed string, length int) string {
 	b.mu.Lock()
-	var out = b.Model.generate(seed, length)
-	b.mu.Unlock()
+	defer b.mu.Unlock()
 
-	return out
+	return b.Model.generate(seed, length)
 }
