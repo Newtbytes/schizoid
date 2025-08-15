@@ -71,9 +71,33 @@ func (m *NgramModel) train(sample string) {
 
 	// add end of text token
 	tokens := append(m.tokenizer.Encode(sample), 0)
-	for _, ngram := range ngrams(tokens, m.n) {
-		m.counts[m.tokenizer.Decode(ngram)]++
+
+	for n := range m.n + 1 {
+		for _, ngram := range ngrams(tokens, n) {
+			m.counts[m.tokenizer.Decode(ngram)]++
+		}
 	}
+}
+
+func (m *NgramModel) countOf(ctx []uint8) uint64 {
+	var count uint64
+
+	for {
+		if len(ctx) == 0 {
+			count = 0
+			break
+		}
+
+		count = m.counts[m.tokenizer.Decode(ctx)]
+
+		if count == 0 {
+			ctx = ctx[1:]
+		} else {
+			break
+		}
+	}
+
+	return count
 }
 
 func (m *NgramModel) probs(text string) []float64 {
@@ -81,11 +105,6 @@ func (m *NgramModel) probs(text string) []float64 {
 	total := float64(0)
 
 	var vocabSize = m.tokenizer.VocabSize()
-
-	num := m.n - 1 - len(text)
-	for i := 0; i < num; i++ {
-		text = "\x00" + text
-	}
 
 	context := m.tokenizer.Encode(text)
 	context = context[len(context)-m.n+1:]
@@ -97,16 +116,14 @@ func (m *NgramModel) probs(text string) []float64 {
 	}
 
 	for i := range vocabSize {
-		var query = continuation(uint8(i))
-		total += float64(m.counts[m.tokenizer.Decode(query)])
+		total += float64(m.countOf(continuation(uint8(i))))
 	}
 
 	total += float64(vocabSize) * m.smoothing
 
 	for i := range vocabSize {
 		if total > 0 {
-			var query = continuation(uint8(i))
-			var count = float64(m.counts[m.tokenizer.Decode(query)]) + m.smoothing
+			var count = float64(m.countOf(continuation(uint8(i)))) + m.smoothing
 			probs = append(probs, count/total)
 		} else {
 			probs = append(probs, 0.0)
