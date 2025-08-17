@@ -10,37 +10,77 @@ type Token int
 type Tokenizer interface {
 	Encode(text string) []Token
 	Decode(tokens []Token) string
+	Observe(text string)
 	VocabSize() int
 }
 
-type CharTokenizer struct{}
+type CharTokenizer struct {
+	vocab          []rune
+	special_tokens []string // special tokens need strings to be displayed (e.g. <|endoftext|>)
+}
+
+func NewCharTokenizer(special_tokens []string) *CharTokenizer {
+	if len(special_tokens) == 0 {
+		special_tokens = []string{
+			"<|endoftext|>",
+		}
+	}
+
+	var c = &CharTokenizer{
+		vocab:          make([]rune, 0),
+		special_tokens: special_tokens,
+	}
+
+	return c
+}
 
 func (c *CharTokenizer) Encode(text string) []Token {
-	text = strings.ToValidUTF8(text, "�")
-
 	var tokens []Token
-	for _, char := range text {
-		tokens = append(tokens, Token(char))
+
+	for _, r := range text {
+		tok := strings.IndexRune(string(c.vocab), r)
+
+		// use -1 for unknown tokens and adjust the tok id for known tokens
+		if tok >= 0 {
+			tok += len(c.special_tokens)
+		}
+
+		tokens = append(tokens, Token(tok))
 	}
 
 	return tokens
 }
 
 func (c *CharTokenizer) Decode(tokens []Token) string {
-	var text string
+	var sb strings.Builder
 
-	for _, token := range tokens {
-		text += string(token)
+	for _, tok := range tokens {
+		if tok < 0 || int(tok) >= c.VocabSize() {
+			sb.WriteRune('�') // unknown token
+			continue
+		}
+
+		if len(c.special_tokens) <= int(tok) {
+			// adjust the token id to match the vocab index
+			sb.WriteRune(c.vocab[int(tok)-len(c.special_tokens)])
+		} else {
+			sb.WriteString(c.special_tokens[tok])
+		}
 	}
 
-	text = strings.ToValidUTF8(text, "�")
+	return sb.String()
+}
 
-	return text
+func (c *CharTokenizer) Observe(text string) {
+	for _, r := range text {
+		if !strings.ContainsRune(string(c.vocab), r) {
+			c.vocab = append(c.vocab, r)
+		}
+	}
 }
 
 func (c *CharTokenizer) VocabSize() int {
-	// ASCII
-	return 256
+	return len(c.special_tokens) + len(c.vocab)
 }
 
 type NgramModel struct {
@@ -80,6 +120,9 @@ func (m *NgramModel) train(sample string) {
 	if len(sample) == 0 {
 		return
 	}
+
+	// update the tokenizer vocab
+	m.tokenizer.Observe(sample)
 
 	// add end of text token
 	tokens := append(m.tokenizer.Encode(sample), 0)
