@@ -15,8 +15,8 @@ type Tokenizer interface {
 }
 
 type CharTokenizer struct {
-	vocab          []rune
-	special_tokens []string // special tokens need strings to be displayed (e.g. <|endoftext|>)
+	Vocab         []rune
+	SpecialTokens []string // special tokens need strings to be displayed (e.g. <|endoftext|>)
 }
 
 func NewCharTokenizer(special_tokens []string) *CharTokenizer {
@@ -27,8 +27,8 @@ func NewCharTokenizer(special_tokens []string) *CharTokenizer {
 	}
 
 	var c = &CharTokenizer{
-		vocab:          make([]rune, 0),
-		special_tokens: special_tokens,
+		Vocab:         make([]rune, 0),
+		SpecialTokens: special_tokens,
 	}
 
 	return c
@@ -38,11 +38,11 @@ func (c *CharTokenizer) Encode(text string) []Token {
 	var tokens []Token
 
 	for _, r := range text {
-		tok := strings.IndexRune(string(c.vocab), r)
+		tok := strings.IndexRune(string(c.Vocab), r)
 
 		// use -1 for unknown tokens and adjust the tok id for known tokens
 		if tok >= 0 {
-			tok += len(c.special_tokens)
+			tok += len(c.SpecialTokens)
 		}
 
 		tokens = append(tokens, Token(tok))
@@ -60,11 +60,11 @@ func (c *CharTokenizer) Decode(tokens []Token) string {
 			continue
 		}
 
-		if len(c.special_tokens) <= int(tok) {
+		if len(c.SpecialTokens) <= int(tok) {
 			// adjust the token id to match the vocab index
-			sb.WriteRune(c.vocab[int(tok)-len(c.special_tokens)])
+			sb.WriteRune(c.Vocab[int(tok)-len(c.SpecialTokens)])
 		} else {
-			sb.WriteString(c.special_tokens[tok])
+			sb.WriteString(c.SpecialTokens[tok])
 		}
 	}
 
@@ -73,20 +73,20 @@ func (c *CharTokenizer) Decode(tokens []Token) string {
 
 func (c *CharTokenizer) Observe(text string) {
 	for _, r := range text {
-		if !strings.ContainsRune(string(c.vocab), r) {
-			c.vocab = append(c.vocab, r)
+		if !strings.ContainsRune(string(c.Vocab), r) {
+			c.Vocab = append(c.Vocab, r)
 		}
 	}
 }
 
 func (c *CharTokenizer) VocabSize() int {
-	return len(c.special_tokens) + len(c.vocab)
+	return len(c.SpecialTokens) + len(c.Vocab)
 }
 
 type NgramModel struct {
 	Counts map[string]uint64
 
-	tokenizer Tokenizer
+	Tokenizer Tokenizer
 	N         int
 	Smoothing float64
 }
@@ -94,7 +94,7 @@ type NgramModel struct {
 func NewNgramModel(tokenizer Tokenizer, n int, smoothing float64) *NgramModel {
 	model := &NgramModel{
 		Counts:    make(map[string]uint64),
-		tokenizer: tokenizer,
+		Tokenizer: tokenizer,
 		N:         n,
 		Smoothing: smoothing,
 	}
@@ -122,14 +122,14 @@ func (m *NgramModel) train(sample string) {
 	}
 
 	// update the tokenizer vocab
-	m.tokenizer.Observe(sample)
+	m.Tokenizer.Observe(sample)
 
 	// add end of text token
-	tokens := append(m.tokenizer.Encode(sample), 0)
+	tokens := append(m.Tokenizer.Encode(sample), 0)
 
 	for n := range m.N + 1 {
 		for _, ngram := range ngrams(tokens, n) {
-			m.Counts[m.tokenizer.Decode(ngram)]++
+			m.Counts[m.Tokenizer.Decode(ngram)]++
 		}
 	}
 }
@@ -143,7 +143,7 @@ func (m *NgramModel) countOf(ctx []Token, nMin int) uint64 {
 			break
 		}
 
-		count = m.Counts[m.tokenizer.Decode(ctx)]
+		count = m.Counts[m.Tokenizer.Decode(ctx)]
 
 		if count == 0 && len(ctx) > nMin {
 			ctx = ctx[1:]
@@ -159,9 +159,9 @@ func (m *NgramModel) probs(text string) []float64 {
 	var probs []float64
 	total := float64(0)
 
-	var vocabSize = m.tokenizer.VocabSize()
+	var vocabSize = m.Tokenizer.VocabSize()
 
-	context := m.tokenizer.Encode(text)
+	context := m.Tokenizer.Encode(text)
 	context = context[len(context)-m.N+1:]
 
 	var continuation = func(tok Token) []Token {
@@ -215,7 +215,7 @@ func (m *NgramModel) generate(seed string, length int) string {
 	for range length {
 		sampled := sample(m.probs(out))
 
-		var next = m.tokenizer.Decode([]Token{Token(sampled)})
+		var next = m.Tokenizer.Decode([]Token{Token(sampled)})
 
 		if sampled == 0 {
 			break
@@ -232,12 +232,12 @@ func (m *NgramModel) forget(text string) {
 		return
 	}
 
-	tokens := m.tokenizer.Encode(text)
+	tokens := m.Tokenizer.Encode(text)
 	tokens = append(tokens, 0) // add end of text token
 
 	for n := range m.N + 1 {
 		for _, ngram := range ngrams(tokens, n) {
-			key := m.tokenizer.Decode(ngram)
+			key := m.Tokenizer.Decode(ngram)
 			if count, exists := m.Counts[key]; exists {
 				if count > 0 {
 					m.Counts[key]--
