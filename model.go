@@ -134,25 +134,8 @@ func (m *NgramModel) train(sample string) {
 	}
 }
 
-func (m *NgramModel) countOf(ctx []Token, nMin int) uint64 {
-	var count uint64 = 0
-
-	for {
-		if len(ctx) == 0 {
-			count = 0
-			break
-		}
-
-		count = m.Counts[m.Tokenizer.Decode(ctx)]
-
-		if count == 0 && len(ctx) > nMin {
-			ctx = ctx[1:]
-		} else {
-			break
-		}
-	}
-
-	return count
+func (m *NgramModel) countOf(ctx []Token) uint64 {
+	return m.Counts[m.Tokenizer.Decode(ctx)]
 }
 
 func (m *NgramModel) probs(text string) []float64 {
@@ -170,11 +153,11 @@ func (m *NgramModel) probs(text string) []float64 {
 		return append(out, tok)
 	}
 
-	total = float64(m.countOf(context, m.N)) + float64(vocabSize)*m.Smoothing
+	total = float64(m.countOf(context)) + float64(vocabSize)*m.Smoothing
 
 	for i := range vocabSize {
 		if total > 0 {
-			var count = float64(m.countOf(continuation(Token(i)), m.N)) + m.Smoothing
+			var count = float64(m.countOf(continuation(Token(i)))) + m.Smoothing
 			probs = append(probs, count/total)
 		} else {
 			probs = append(probs, 0.0)
