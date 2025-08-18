@@ -70,7 +70,7 @@ type Brain struct {
 
 func NewBrain(guildID snowflake.ID) *Brain {
 	b := &Brain{
-		Model:        NewNgramModel(&CharTokenizer{}, 5, 0),
+		Model:        NewNgramModel(NewCharTokenizer([]string{}), 5, 0),
 		TrainedSpans: make(map[snowflake.ID]*TrainedSpan),
 		GuildID:      guildID,
 	}
