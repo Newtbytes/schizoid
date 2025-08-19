@@ -7,32 +7,25 @@ import (
 
 type Token int
 
-type Tokenizer interface {
-	Encode(text string) []Token
-	Decode(tokens []Token) string
-	Observe(text string)
-	VocabSize() int
-}
-
-type CharTokenizer struct {
+type Tokenizer struct {
 	Vocab         []rune
 	SpecialTokens []string // special tokens need strings to be displayed (e.g. <|endoftext|>)
 }
 
-func makeCharTokenizer(special_tokens []string) CharTokenizer {
+func makeCharTokenizer(special_tokens []string) Tokenizer {
 	if len(special_tokens) == 0 {
 		special_tokens = []string{
 			"<|endoftext|>",
 		}
 	}
 
-	return CharTokenizer{
+	return Tokenizer{
 		Vocab:         make([]rune, 0),
 		SpecialTokens: special_tokens,
 	}
 }
 
-func (c *CharTokenizer) Encode(text string) []Token {
+func (c *Tokenizer) Encode(text string) []Token {
 	var tokens []Token
 
 	for _, r := range text {
@@ -49,7 +42,7 @@ func (c *CharTokenizer) Encode(text string) []Token {
 	return tokens
 }
 
-func (c *CharTokenizer) Decode(tokens []Token) string {
+func (c *Tokenizer) Decode(tokens []Token) string {
 	var sb strings.Builder
 
 	for _, tok := range tokens {
@@ -69,7 +62,7 @@ func (c *CharTokenizer) Decode(tokens []Token) string {
 	return sb.String()
 }
 
-func (c *CharTokenizer) Observe(text string) {
+func (c *Tokenizer) Observe(text string) {
 	for _, r := range text {
 		if !strings.ContainsRune(string(c.Vocab), r) {
 			c.Vocab = append(c.Vocab, r)
@@ -77,19 +70,19 @@ func (c *CharTokenizer) Observe(text string) {
 	}
 }
 
-func (c *CharTokenizer) VocabSize() int {
+func (c *Tokenizer) VocabSize() int {
 	return len(c.SpecialTokens) + len(c.Vocab)
 }
 
 type NgramModel struct {
 	Counts map[string]uint64
 
-	Tokenizer CharTokenizer
+	Tokenizer Tokenizer
 	N         int
 	Smoothing float64
 }
 
-func NewNgramModel(tokenizer CharTokenizer, n int, smoothing float64) *NgramModel {
+func NewNgramModel(tokenizer Tokenizer, n int, smoothing float64) *NgramModel {
 	model := &NgramModel{
 		Counts:    make(map[string]uint64),
 		Tokenizer: tokenizer,
