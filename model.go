@@ -19,19 +19,17 @@ type CharTokenizer struct {
 	SpecialTokens []string // special tokens need strings to be displayed (e.g. <|endoftext|>)
 }
 
-func NewCharTokenizer(special_tokens []string) *CharTokenizer {
+func makeCharTokenizer(special_tokens []string) CharTokenizer {
 	if len(special_tokens) == 0 {
 		special_tokens = []string{
 			"<|endoftext|>",
 		}
 	}
 
-	var c = &CharTokenizer{
+	return CharTokenizer{
 		Vocab:         make([]rune, 0),
 		SpecialTokens: special_tokens,
 	}
-
-	return c
 }
 
 func (c *CharTokenizer) Encode(text string) []Token {
@@ -86,12 +84,12 @@ func (c *CharTokenizer) VocabSize() int {
 type NgramModel struct {
 	Counts map[string]uint64
 
-	Tokenizer Tokenizer
+	Tokenizer CharTokenizer
 	N         int
 	Smoothing float64
 }
 
-func NewNgramModel(tokenizer Tokenizer, n int, smoothing float64) *NgramModel {
+func NewNgramModel(tokenizer CharTokenizer, n int, smoothing float64) *NgramModel {
 	model := &NgramModel{
 		Counts:    make(map[string]uint64),
 		Tokenizer: tokenizer,

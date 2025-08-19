@@ -70,7 +70,7 @@ type Brain struct {
 
 func NewBrain(guildID snowflake.ID) *Brain {
 	b := &Brain{
-		Model:        NewNgramModel(NewCharTokenizer([]string{}), 5, 0),
+		Model:        NewNgramModel(makeCharTokenizer([]string{}), 5, 0),
 		TrainedSpans: make(map[snowflake.ID]*TrainedSpan),
 		GuildID:      guildID,
 	}
@@ -137,8 +137,6 @@ func LoadBrain(guildID snowflake.ID) *Brain {
 		slog.Error("Failed to decode brain data", slog.Any("error", err))
 		return NewBrain(guildID)
 	}
-
-	brain.Model.Tokenizer = &CharTokenizer{}
 
 	slog.Info("Loaded brain for guild", slog.Any("guildID", guildID), slog.Int("trainedSpans", len(brain.TrainedSpans)))
 	return &brain
