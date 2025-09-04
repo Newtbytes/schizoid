@@ -197,6 +197,10 @@ func (b *Brain) observe(obs discord.Message) {
 }
 
 func (b *Brain) observeSomeMessages(client bot.Client, channelID snowflake.ID) {
+	if !b.isWhitelisted(channelID) {
+		return
+	}
+
 	var span = b.getTrainedSpan(channelID)
 
 	if span == nil {
@@ -215,9 +219,7 @@ func (b *Brain) observeSomeMessages(client bot.Client, channelID snowflake.ID) {
 		b.observe(msg)
 	}
 
-	if b.isWhitelisted(channelID) {
-		slog.Info("Trained:", slog.String("channelID", channelID.String()), slog.Time("start", b.TrainedSpans[channelID].Start), slog.Time("end", b.TrainedSpans[channelID].End))
-	}
+	slog.Info("Trained:", slog.String("channelID", channelID.String()), slog.Time("start", b.TrainedSpans[channelID].Start), slog.Time("end", b.TrainedSpans[channelID].End))
 }
 
 func (b *Brain) generate(seed string, length int) string {
