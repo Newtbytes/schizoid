@@ -61,18 +61,20 @@ func makeSpan(msg discord.Message) *TrainedSpan {
 }
 
 type Brain struct {
-	Model        *NgramModel
-	TrainedSpans map[snowflake.ID]*TrainedSpan
-	GuildID      snowflake.ID
+	Model            *NgramModel
+	TrainedSpans     map[snowflake.ID]*TrainedSpan
+	ChannelWhitelist map[snowflake.ID]bool
+	GuildID          snowflake.ID
 
 	mu sync.RWMutex
 }
 
 func NewBrain(guildID snowflake.ID) *Brain {
 	b := &Brain{
-		Model:        NewNgramModel(makeCharTokenizer([]string{}), 5, 0),
-		TrainedSpans: make(map[snowflake.ID]*TrainedSpan),
-		GuildID:      guildID,
+		Model:            NewNgramModel(makeCharTokenizer([]string{}), 5, 0),
+		TrainedSpans:     make(map[snowflake.ID]*TrainedSpan),
+		ChannelWhitelist: make(map[snowflake.ID]bool),
+		GuildID:          guildID,
 	}
 
 	return b
@@ -142,7 +144,24 @@ func LoadBrain(guildID snowflake.ID) *Brain {
 	return &brain
 }
 
+func (b *Brain) WhitelistChannel(channelID snowflake.ID) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.ChannelWhitelist[channelID] = true
+}
+
+func (b *Brain) isWhitelisted(channelID snowflake.ID) bool {
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+
+	return b.ChannelWhitelist[channelID]
+}
+
 func (b *Brain) shouldObserve(obs discord.Message) bool {
+	if !b.isWhitelisted(obs.ChannelID) {
+		return false
+	}
+
 	if obs.Author.Bot {
 		return false
 	}
@@ -196,7 +215,9 @@ func (b *Brain) observeSomeMessages(client bot.Client, channelID snowflake.ID) {
 		b.observe(msg)
 	}
 
-	slog.Info("Trained:", slog.String("channelID", channelID.String()), slog.Time("start", b.TrainedSpans[channelID].Start), slog.Time("end", b.TrainedSpans[channelID].End))
+	if b.isWhitelisted(channelID) {
+		slog.Info("Trained:", slog.String("channelID", channelID.String()), slog.Time("start", b.TrainedSpans[channelID].Start), slog.Time("end", b.TrainedSpans[channelID].End))
+	}
 }
 
 func (b *Brain) generate(seed string, length int) string {

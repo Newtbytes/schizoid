@@ -16,6 +16,7 @@ import (
 	"github.com/disgoorg/disgo/discord"
 	"github.com/disgoorg/disgo/events"
 	"github.com/disgoorg/disgo/gateway"
+	"github.com/disgoorg/disgo/handler"
 	"github.com/disgoorg/snowflake/v2"
 	"github.com/joho/godotenv"
 )
@@ -25,6 +26,20 @@ var (
 	trainInterval = os.Getenv("TRAIN_INTERVAL_SECONDS")
 
 	guilds = make(map[snowflake.ID]*Brain)
+
+	commands = []discord.ApplicationCommandCreate{
+		discord.SlashCommandCreate{
+			Name:        "watchchannel",
+			Description: "let schizoid learn from a channel",
+			Options: []discord.ApplicationCommandOption{
+				discord.ApplicationCommandOptionChannel{
+					Name:        "channel",
+					Description: "Channel to learn from",
+					Required:    true,
+				},
+			},
+		},
+	}
 )
 
 func retrieve_guild_brain(client bot.Client, id snowflake.ID) *Brain {
@@ -44,6 +59,10 @@ func main() {
 
 	token = os.Getenv("DISCORD_TOKEN")
 
+	r := handler.New()
+
+	r.SlashCommand("/watchchannel", handleWatchChannel)
+
 	client, err := disgo.New(token,
 		bot.WithCacheConfigOpts(
 			cache.WithCaches(cache.FlagsAll),
@@ -59,6 +78,7 @@ func main() {
 		),
 		bot.WithEventListenerFunc(onMessageCreate),
 		bot.WithEventListenerFunc(onMessageDelete),
+		bot.WithEventListeners(r),
 	)
 
 	if err != nil {
@@ -75,7 +95,12 @@ func main() {
 
 	if err = client.OpenGateway(context.TODO()); err != nil {
 		slog.Error("Failed to open gateway", slog.String("err", err.Error()))
-		return
+		panic(err)
+	}
+
+	if _, err = client.Rest().SetGlobalCommands(client.ApplicationID(), commands); err != nil {
+		slog.Error("Failed to register commands", slog.String("err", err.Error()))
+		panic(err)
 	}
 
 	log.Print("schizoid is now running. Press CTRL-C to exit.")
@@ -147,4 +172,20 @@ func onMessageDelete(event *events.MessageDelete) {
 		slog.String("channelID", event.ChannelID.String()),
 		slog.String("guildID", event.GuildID.String()),
 	)
+}
+
+func handleWatchChannel(data discord.SlashCommandInteractionData, e *handler.CommandEvent) error {
+	schizo := retrieve_guild_brain(e.Client(), *e.GuildID())
+	channel := data.Channel("channel")
+	schizo.WhitelistChannel(channel.ID)
+
+	if err := e.CreateMessage(discord.NewMessageCreateBuilder().
+		SetContent("Added channel " + channel.Name + " to whitelist.").
+		Build(),
+	); err != nil {
+		e.Client().Logger().Error("error on sending response", slog.Any("err", err))
+		return err
+	}
+
+	return nil
 }
