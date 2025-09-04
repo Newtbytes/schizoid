@@ -6,7 +6,7 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
-	"strings"
+	"slices"
 	"syscall"
 	"time"
 
@@ -147,9 +147,11 @@ func onMessageCreate(event *events.MessageCreate) {
 	schizo.observe(event.Message)
 
 	var message string
-	if strings.HasPrefix(event.Message.Content, "?schizoid") {
-		var seed = event.Message.Content[len("?schizoid "):]
-		message = schizo.generate(seed, 512)
+
+	// respond if bot is mentioned
+	mentioned_users := event.Message.Mentions
+	if slices.ContainsFunc(mentioned_users, func(u discord.User) bool { return u.ID == event.Client().ID() }) {
+		message = schizo.generate(event.Message.Content, 512)
 	}
 
 	if message != "" {
