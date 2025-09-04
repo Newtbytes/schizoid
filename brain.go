@@ -98,12 +98,12 @@ func (b *Brain) Save() {
 
 	err := encoder.Encode(b)
 	if err != nil {
-		slog.Error("Error serializing:", slog.Any("err", err))
+		slog.Error("Error serializing:", slog.String("err", err.Error()))
 		return
 	}
 
 	if err := os.MkdirAll("models", 0755); err != nil {
-		slog.Error("Failed to create models directory", slog.Any("err", err))
+		slog.Error("Failed to create models directory", slog.String("err", err.Error()))
 		return
 	}
 
@@ -124,7 +124,7 @@ func LoadBrain(guildID snowflake.ID) *Brain {
 
 	data, err := os.ReadFile(fn)
 	if err != nil {
-		slog.Error("Failed to read brain file", slog.String("file", fn), slog.Any("error", err))
+		slog.Error("Failed to read brain file", slog.String("file", fn), slog.String("err", err.Error()))
 		return NewBrain(guildID)
 	}
 
@@ -134,7 +134,7 @@ func LoadBrain(guildID snowflake.ID) *Brain {
 	decoder := gob.NewDecoder(&buffer)
 	err = decoder.Decode(&brain)
 	if err != nil {
-		slog.Error("Failed to decode brain data", slog.Any("error", err))
+		slog.Error("Failed to decode brain data", slog.String("err", err.Error()))
 		return NewBrain(guildID)
 	}
 

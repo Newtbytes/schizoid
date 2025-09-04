@@ -39,7 +39,7 @@ func retrieve_guild_brain(client bot.Client, id snowflake.ID) *Brain {
 func main() {
 	err := godotenv.Load()
 	if err != nil {
-		slog.Error("Failed to load environment", slog.Any("err", err))
+		slog.Error("Failed to load environment", slog.String("err", err.Error()))
 	}
 
 	token = os.Getenv("DISCORD_TOKEN")
@@ -62,7 +62,7 @@ func main() {
 	)
 
 	if err != nil {
-		slog.Error("Failed to create client", slog.Any("err", err))
+		slog.Error("Failed to create client", slog.String("err", err.Error()))
 		return
 	}
 
@@ -74,7 +74,7 @@ func main() {
 	}()
 
 	if err = client.OpenGateway(context.TODO()); err != nil {
-		slog.Error("Failed to open gateway", slog.Any("err", err))
+		slog.Error("Failed to open gateway", slog.String("err", err.Error()))
 		return
 	}
 
@@ -95,7 +95,7 @@ func observeChannels(client bot.Client, guildID snowflake.ID) {
 
 	var interval, err = time.ParseDuration(trainInterval + "s")
 	if err != nil {
-		slog.Error("Failed to parse TRAIN_INTERVAL_SECONDS", slog.Any("err", err))
+		slog.Error("Failed to parse TRAIN_INTERVAL_SECONDS", slog.String("err", err.Error()))
 		interval = 60 * time.Second
 	}
 
