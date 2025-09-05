@@ -80,6 +80,8 @@ type NgramModel struct {
 	Tokenizer Tokenizer
 	N         int
 	Smoothing float64
+
+	Total int
 }
 
 func NewNgramModel(tokenizer Tokenizer, n int, smoothing float64) *NgramModel {
@@ -121,6 +123,7 @@ func (m *NgramModel) train(sample string) {
 	for n := range m.N + 1 {
 		for _, ngram := range ngrams(tokens, n) {
 			m.Counts[m.Tokenizer.Decode(ngram)]++
+			m.Total++
 		}
 	}
 }
@@ -136,7 +139,9 @@ func (m *NgramModel) probs(text string) []float64 {
 	var vocabSize = m.Tokenizer.VocabSize()
 
 	context := m.Tokenizer.Encode(text)
-	context = context[len(context)-m.N+1:]
+	if len(context) >= m.N-1 {
+		context = context[len(context)-m.N+1:]
+	}
 
 	var continuation = func(tok Token) []Token {
 		out := make([]Token, len(context))
@@ -144,7 +149,11 @@ func (m *NgramModel) probs(text string) []float64 {
 		return append(out, tok)
 	}
 
-	total = float64(m.countOf(context)) + float64(vocabSize)*m.Smoothing
+	if len(context) > 0 {
+		total = float64(m.countOf(context)) + float64(vocabSize)*m.Smoothing
+	} else {
+		total = float64(m.Total)
+	}
 
 	for i := range vocabSize {
 		if total > 0 {
@@ -180,10 +189,6 @@ func sample(probs []float64) uint32 {
 }
 
 func (m *NgramModel) generate(seed string, length int) string {
-	if len(seed) < m.N-1 {
-		return ""
-	}
-
 	var out = seed
 
 	for range length {

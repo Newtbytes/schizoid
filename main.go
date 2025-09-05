@@ -151,7 +151,7 @@ func onMessageCreate(event *events.MessageCreate) {
 	// respond if bot is mentioned
 	mentioned_users := event.Message.Mentions
 	if slices.ContainsFunc(mentioned_users, func(u discord.User) bool { return u.ID == event.Client().ID() }) {
-		message = schizo.generate(event.Message.Content, 512)
+		message = schizo.generate("", 512)
 	}
 
 	if message != "" {
